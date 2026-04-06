@@ -13,7 +13,6 @@ set(EXTERNAL_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals)
 set(MODULE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules)
 set(EXTERNAL_MODULE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/externals)
 
-
 add_executable(Parsetree_visualizer)
 
 target_sources(Parsetree_visualizer
