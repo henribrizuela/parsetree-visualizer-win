@@ -2,6 +2,7 @@ module;
 #include <Windows.h>
 #include <WinUser.h>
 #include <iostream>
+#include <array>
 export module parsetree_app;
 
 struct parsetree_win {
@@ -16,19 +17,48 @@ struct parsetree_border {
 export const char* CLASS_NAME = "parsetree_class";
 static constexpr int FIXED_POS_MODIFIER = 30;
 static parsetree_win parsetree_w;
-static parsetree_border parsetree_borders = {
-    .left = {0, 0, 0, 0},
-    .right = {0, 0, 0, 0},
-    .top = {0, 0, 0, 0},
-    .bottom = {0, 0, 0, 0}
-};
-static bool borders_drawn = false;
+static parsetree_border parsetree_borders{};
 // min max info of window size
 static MINMAXINFO* mmi = NULL;
 
 // paint initializers
 static PAINTSTRUCT ps;
 static HDC hdc;
+static WNDCLASSEX wc{};
+
+// rect usage
+static RECT rc;
+
+static void init_borders(HWND hwnd) {
+    RECT win_rect;
+    // need client area instead of window area
+    GetClientRect(hwnd, &win_rect);
+    // draw rect edges to the borders
+    parsetree_borders.left = {
+        .left = 0,
+        .top = 0,
+        .right = FIXED_POS_MODIFIER,
+        .bottom = win_rect.bottom
+    };
+    parsetree_borders.right = {
+        .left = win_rect.right - FIXED_POS_MODIFIER,
+        .top = 0,
+        .right = win_rect.right,
+        .bottom = win_rect.bottom
+    };
+    parsetree_borders.top = {
+        .left = FIXED_POS_MODIFIER,
+        .top = 0,
+        .right = win_rect.right - FIXED_POS_MODIFIER,
+        .bottom = FIXED_POS_MODIFIER
+    };
+    parsetree_borders.bottom = {
+        .left = FIXED_POS_MODIFIER,
+        .top = win_rect.bottom - FIXED_POS_MODIFIER,
+        .right = win_rect.right - FIXED_POS_MODIFIER,
+        .bottom = win_rect.bottom
+    };
+}
 
 static void create_parsetree_properties(HWND hwnd) {
     LONG units = GetDialogBaseUnits();
@@ -38,15 +68,18 @@ static void create_parsetree_properties(HWND hwnd) {
     if (win_w == 0 || win_h == 0) return;
     int button_w = MulDiv(LOWORD(units), 50, 4), button_h = MulDiv(HIWORD(units), 14, 8);
 
-    int border_left = parsetree_borders.left.left;
+    init_borders(hwnd);
+    int border_left = parsetree_borders.left.right;
     int border_right = parsetree_borders.right.right;
+    int border_top = parsetree_borders.top.bottom;
+    int border_bottom = parsetree_borders.bottom.bottom;
 
     // help button
     parsetree_w.help_button = CreateWindow(
         "BUTTON",
         "Help",
         WS_VISIBLE | WS_CHILD | WS_BORDER,
-        border_left, 0, button_w, button_h,
+        border_left, border_top, button_w, button_h,
         hwnd, NULL, NULL, NULL // 2nd null allows button to make actions.
     );
 
@@ -55,7 +88,7 @@ static void create_parsetree_properties(HWND hwnd) {
         "BUTTON",
         "Examples",
         WS_VISIBLE | WS_CHILD | WS_BORDER,
-        border_left + button_w, 0, button_w, button_h,
+        border_left + button_w, border_top, button_w, button_h,
         hwnd, NULL, NULL, NULL
     );
 }
@@ -65,50 +98,43 @@ static void update_parsetree_properties(HWND hwnd) {
     LONG units = GetDialogBaseUnits();
     RECT rect;
     int win_w = 0, win_h = 0;
-    if (GetWindowRect(hwnd, &rect)) { win_w = (int)(rect.right - rect.left); win_h = (int)(rect.bottom - rect.top); }
+    if (GetClientRect(hwnd, &rect)) { win_w = (int)(rect.right - rect.left); win_h = (int)(rect.bottom - rect.top); }
     if (win_w == 0 || win_h == 0) return;
     int button_w = MulDiv(LOWORD(units), 50, 4), button_h = MulDiv(HIWORD(units), 14, 8);
-    
-    int border_left = parsetree_borders.left.left;
+
+    init_borders(hwnd);
+
+    int border_left = parsetree_borders.left.right;
     int border_right = parsetree_borders.right.right;
-    
+    int border_top = parsetree_borders.top.bottom;
+    int border_bottom = parsetree_borders.bottom.bottom;
+
+
     // update all the child windows
     SetWindowPos(
         parsetree_w.help_button,
         HWND_TOP,
-        border_left, 0, button_w, button_h,
+        border_left, border_top, button_w, button_h,
         SWP_SHOWWINDOW
     );
 
     SetWindowPos(
         parsetree_w.examples_button,
         HWND_TOP,
-        border_left + button_w, 0, button_w, button_h,
+        border_left + button_w, border_top, button_w, button_h,
         SWP_SHOWWINDOW
     );
 }
 
 static void draw_borders(HDC hdc, HWND hwnd) {
-    if (borders_drawn) return;
-    RECT win_rect;
-    // need client area instead of window area
-    GetClientRect(hwnd, &win_rect);
-    // draw rect edges to the borders
-    parsetree_borders.left = {
-        .left = 0,
-        .top = 0,
-        .right = 30,
-        .bottom = win_rect.bottom
-    };
-    parsetree_borders.right = {
-        .left = win_rect.right - 30,
-        .top = 0,
-        .right = win_rect.right,
-        .bottom = win_rect.bottom
-    };
+    FillRect(hdc, &parsetree_borders.left, (HBRUSH)(COLOR_3DFACE + 1));
+    FillRect(hdc, &parsetree_borders.right, (HBRUSH)(COLOR_3DFACE + 1));
+    FillRect(hdc, &parsetree_borders.top, (HBRUSH)(COLOR_3DFACE + 1));
+    FillRect(hdc, &parsetree_borders.bottom, (HBRUSH)(COLOR_3DFACE + 1));
     DrawEdge(hdc, &parsetree_borders.left, EDGE_ETCHED, BF_RECT);
     DrawEdge(hdc, &parsetree_borders.right, EDGE_ETCHED, BF_RECT);
-    borders_drawn = true;
+    DrawEdge(hdc, &parsetree_borders.top, EDGE_ETCHED, BF_RECT);
+    DrawEdge(hdc, &parsetree_borders.bottom, EDGE_ETCHED, BF_RECT);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -128,6 +154,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_SIZE:
         std::cout << "updating!" << std::endl; // also scale the properties to the window size (not just movement)
         update_parsetree_properties(hwnd);
+        InvalidateRect(hwnd, NULL, true);
         break;
     case WM_CLOSE:
         std::cout << "closing!" << std::endl;
@@ -140,6 +167,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         mmi->ptMinTrackSize.x = 800;
         mmi->ptMinTrackSize.y = 600;
         break;
+    case WM_ERASEBKGND:
+        std::cout << "clearing!" << std::endl;
+        hdc = (HDC)wParam;
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
+        return 1; // handled erasing.
     default:
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }
