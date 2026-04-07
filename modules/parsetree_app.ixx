@@ -5,6 +5,11 @@ module;
 #include <array>
 export module parsetree_app;
 
+enum button_action_id {
+    ACTION_HELP=1
+};
+
+// the top level windows and its contents
 struct parsetree_win {
     HWND top_win;
     HWND help_button, settings_button, examples_button;
@@ -14,12 +19,35 @@ struct parsetree_border {
     RECT left, right, top, bottom;
 };
 
-export const char* CLASS_NAME = "parsetree_class";
+// the secondary windows obtained through top-level button action
+struct parsetree_button_win {
+    HWND help_button_window;
+    HWND settings_button_window;
+    HWND examples_button_window;
+};
+
+// the properties of the secondary windows
+struct help_win_contents {
+
+};
+
+
+
+// button window class names
+const char* HELPWIN_CLASS_NAME = "help_window";
+const char* SETTINGSWIN_CLASS_NAME = "settings_window";
+const char* EXAMPLESWIN_CLASS_NAME = "examples_window";
+
+// initial configuration stuff
+static HINSTANCE g_hInstance;
+const char* CLASS_NAME = "parsetree_class";
 static constexpr int FIXED_POS_MODIFIER = 30;
 static parsetree_win parsetree_w;
 static parsetree_border parsetree_borders{};
+static parsetree_button_win button_windows;
 // min max info of window size
-static MINMAXINFO* mmi = NULL;
+static MINMAXINFO* top_mmi = nullptr;
+static MINMAXINFO* help_mmi = nullptr;
 
 // paint initializers
 static PAINTSTRUCT ps;
@@ -60,6 +88,87 @@ static void init_borders(HWND hwnd) {
     };
 }
 
+static void update_help_window() {
+
+}
+
+static LRESULT CALLBACK help_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    help_mmi = (MINMAXINFO*)lParam;
+    switch (uMsg) {
+        case WM_CLOSE:
+            std::cout << "closing help window!" << std::endl;
+            ShowWindow(hwnd, SW_HIDE);
+            break;
+        case WM_PAINT:
+            std::cout << "Painting help window!" << std::endl;
+            break;
+        case WM_SIZING:
+        case WM_SIZE:
+            std::cout << "Resizing help window!" << std::endl;
+            break;
+        case WM_DESTROY:
+            break;
+        case WM_GETMINMAXINFO:
+            help_mmi->ptMinTrackSize.x = 400;
+            help_mmi->ptMinTrackSize.y = 300;
+            break;
+        default:
+            return DefWindowProc(hwnd, uMsg, wParam, lParam);
+    }
+    return 0;
+}
+
+static void create_help_window(HWND hwnd) {
+    WNDCLASSEX help_win_class = {
+        .cbSize = sizeof(WNDCLASSEX),
+        .style = 0,
+        .lpfnWndProc = help_proc,
+        .cbClsExtra = 0,
+        .cbWndExtra = 0,
+        .hInstance = g_hInstance,
+        .hIcon = LoadIcon(NULL, IDI_APPLICATION),
+        .hCursor = LoadCursor(NULL, IDC_ARROW),
+        .hbrBackground = (HBRUSH)(COLOR_WINDOW + 1),
+        .lpszMenuName = NULL,
+        .lpszClassName = HELPWIN_CLASS_NAME,
+        .hIconSm = LoadIcon(NULL, IDI_APPLICATION),
+    };
+    if (!RegisterClassEx(&help_win_class)) {
+        MessageBox(NULL, "Window registration failed.", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        return;
+    }
+
+    button_windows.help_button_window = CreateWindowEx(
+        0,
+        HELPWIN_CLASS_NAME,
+        "help",
+        WS_OVERLAPPED | WS_SYSMENU | WS_THICKFRAME,
+        CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,
+        hwnd, NULL, g_hInstance, NULL
+    );
+
+    if (!button_windows.help_button_window) {
+        MessageBox(NULL, "Window creation failed.", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        return;
+    }
+
+    ShowWindow(button_windows.help_button_window, SW_SHOWNORMAL);
+    UpdateWindow(button_windows.help_button_window);
+}
+
+static void handle_button_actions(HWND hwnd, WPARAM wParam) {
+    switch (LOWORD(wParam)) {
+        case ACTION_HELP:
+            if (!IsWindow(button_windows.help_button_window)) create_help_window(hwnd);
+            else {
+                ShowWindow(button_windows.help_button_window, SW_SHOWNORMAL);
+                UpdateWindow(button_windows.help_button_window);
+                SetForegroundWindow(button_windows.help_button_window);
+            }
+            break;
+    }
+}
+
 static void create_parsetree_properties(HWND hwnd) {
     LONG units = GetDialogBaseUnits();
     RECT rect;
@@ -80,7 +189,7 @@ static void create_parsetree_properties(HWND hwnd) {
         "Help",
         WS_VISIBLE | WS_CHILD | WS_BORDER,
         border_left, border_top, button_w, button_h,
-        hwnd, NULL, NULL, NULL // 2nd null allows button to make actions.
+        hwnd, (HMENU)ACTION_HELP, NULL, NULL // 2nd null allows button to make actions.
     );
 
     // examples button
@@ -137,8 +246,8 @@ static void draw_borders(HDC hdc, HWND hwnd) {
     DrawEdge(hdc, &parsetree_borders.bottom, EDGE_ETCHED, BF_RECT);
 }
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    mmi = (MINMAXINFO*)lParam;
+static LRESULT CALLBACK top_level_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    top_mmi = (MINMAXINFO*)lParam;
     switch (msg) {
     case WM_CREATE:
         std::cout << "creating!" << std::endl;
@@ -149,6 +258,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         hdc = BeginPaint(hwnd, &ps);
         draw_borders(hdc, hwnd);
         EndPaint(hwnd, &ps);
+        break;
+    case WM_COMMAND:
+        // button actions
+        handle_button_actions(hwnd, wParam);
         break;
     case WM_SIZING:
     case WM_SIZE:
@@ -164,8 +277,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         PostQuitMessage(0);
         break;
     case WM_GETMINMAXINFO:
-        mmi->ptMinTrackSize.x = 800;
-        mmi->ptMinTrackSize.y = 600;
+        top_mmi->ptMinTrackSize.x = 800;
+        top_mmi->ptMinTrackSize.y = 600;
         break;
     case WM_ERASEBKGND:
         std::cout << "clearing!" << std::endl;
@@ -180,14 +293,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 // Exported function that creates a window
-static HWND create_window(HINSTANCE hInstance, int nShowCmd) {
+static HWND create_window(int nShowCmd) {
     WNDCLASSEX wc = {
         .cbSize = sizeof(WNDCLASSEX),
         .style = 0,
-        .lpfnWndProc = WndProc,
+        .lpfnWndProc = top_level_wnd_proc,
         .cbClsExtra = 0,
         .cbWndExtra = 0,
-        .hInstance = hInstance,
+        .hInstance = g_hInstance,
         .hIcon = LoadIcon(NULL, IDI_APPLICATION),
         .hCursor = LoadCursor(NULL, IDC_ARROW),
         .hbrBackground = (HBRUSH)(COLOR_WINDOW + 1),
@@ -207,7 +320,7 @@ static HWND create_window(HINSTANCE hInstance, int nShowCmd) {
         "parse tree visualizer",
         WS_OVERLAPPEDWINDOW | WS_THICKFRAME,
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-        NULL, NULL, hInstance, NULL
+        NULL, NULL, g_hInstance, NULL
     );
 
     if (!hwnd) {
@@ -224,8 +337,8 @@ static HWND create_window(HINSTANCE hInstance, int nShowCmd) {
 
 
 export void parsetree_app() {
-    HINSTANCE hInstance = GetModuleHandle(NULL);
-    parsetree_w.top_win = create_window(hInstance, SW_SHOW);
+    g_hInstance = GetModuleHandle(NULL);
+    parsetree_w.top_win = create_window(SW_SHOW);
     if (!parsetree_w.top_win) return;
 
     MSG msg;
